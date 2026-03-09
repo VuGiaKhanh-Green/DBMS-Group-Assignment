@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bản đồ Không gian - Demo DBMS</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        /* Khung Tracking thực thể */
+        #tracking-box {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: white; padding: 10px; border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; gap: 5px;
+        }
+        #tracking-box input { padding: 5px; width: 250px; }
+        #tracking-box button { padding: 5px 10px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div id="tracking-box">
+        <input type="text" id="searchInput" placeholder="Gõ: 'tên_bảng id' (Ví dụ: building 6)" />
+        <button onclick="trackingThucThe()">Tracking</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map').setView([21.0285, 105.8542], 13); 
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+        var allFeatures = []; // Mảng lưu trữ toàn bộ thực thể
+
+        fetch('http://127.0.0.1:5000/api/spatial-data')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) { alert("LỖI DB: " + data.error); return; }
+
+                // HÀM XỬ LÝ CHUNG: Gán tên bảng vào từng thực thể
+                function handleEachFeature(tableName) {
+                    return function(feature, layer) {
+                        layer.options.layerName = tableName; // Lệnh quan trọng để Tracking nhận diện bảng
+                        allFeatures.push(layer);
+
+                        if (feature.properties) {
+                            let popup = "<b>Bảng: " + tableName + "</b><hr><table style='width:100%'>";
+                            for (let key in feature.properties) {
+                                popup += `<tr><td><b>${key}:</b></td><td>${feature.properties[key]}</td></tr>`;
+                            }
+                            popup += "</table>";
+                            layer.bindPopup(popup);
+                        }
+                    };
+                }
+
+                const parse = (d) => typeof d === 'string' ? JSON.parse(d) : d;
+
+                // TẠO CÁC LỚP DỮ LIỆU
+                var boundsLayer = L.geoJSON(parse(data['bounds']), { onEachFeature: handleEachFeature('bounds'), style: {color: "#000"} });
+                var instGenLayer = L.geoJSON(parse(data['instruction-generated']), { onEachFeature: handleEachFeature('instruction-generated'), style: {color: "#8a2be2"} });
+                var roadLayer = L.geoJSON(parse(data['road']), { onEachFeature: handleEachFeature('road'), style: {color: "#0055ff", weight: 4} });
+                var buildingLayer = L.geoJSON(parse(data['building']), { onEachFeature: handleEachFeature('building'), style: {color: "#ff0000", fillOpacity: 0.6} });
+                
+                // Lớp bãi rác (Dạng điểm)
+                var garbadgeLayer = L.geoJSON(parse(data['garbadge']), {
+                    onEachFeature: handleEachFeature('garbadge'),
+                    pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 8, fillColor: "#ff7700", color: "#000", weight: 1, fillOpacity: 0.9 })
+                });
+
+                var master = L.featureGroup([boundsLayer, instGenLayer, roadLayer, buildingLayer, garbadgeLayer]).addTo(map);
+                if (master.getBounds().isValid()) map.fitBounds(master.getBounds());
+                
+                L.control.layers(null, {
+                    "Ranh giới": boundsLayer, "Tự động": instGenLayer, "Đường": roadLayer, "Tòa nhà": buildingLayer, "Bãi rác": garbadgeLayer
+                }).addTo(map);
+            });
+
+        // HÀM TRACKING VÔ ĐỐI - TÌM MỌI LOẠI ID
+        window.trackingThucThe = function() {
+            let input = document.getElementById('searchInput').value.toLowerCase().trim();
+            if (!input) return;
+
+            let parts = input.split(' ');
+            let searchTable = parts.length > 1 ? parts[0] : null; 
+            let searchId = parts.length > 1 ? parts[1] : parts[0]; 
+
+            let found = false;
+            for (let layer of allFeatures) {
+                let props = layer.feature.properties;
+                let layerName = layer.options.layerName || "";
+                
+                // Tìm giá trị ID (không phân biệt id, ID, GID...)
+                let currentId = "";
+                for (let key in props) {
+                    if (key.toLowerCase() === 'id' || key.toLowerCase() === 'gid') {
+                        currentId = String(props[key]);
+                        break;
+                    }
+                }
+
+                // Nếu khớp bảng (nếu có nhập) VÀ khớp ID
+                if (searchTable) {
+                    if (layerName.includes(searchTable) && currentId === searchId) {
+                        zoom(layer); found = true; break;
+                    }
+                } else if (currentId === searchId) {
+                    zoom(layer); found = true; break;
+                }
+            }
+            if (!found) alert("Không tìm thấy ID '" + searchId + "' trong bảng " + (searchTable || "tất cả"));
+        };
+
+        function zoom(layer) {
+            layer.openPopup();
+            if (layer.getBounds) map.flyToBounds(layer.getBounds(), { maxZoom: 19, duration: 1.5 });
+            else if (layer.getLatLng) map.flyTo(layer.getLatLng(), 19, { duration: 1.5 });
+        }
+
+        document.getElementById("searchInput").addEventListener("keypress", (e) => { if (e.key === "Enter") trackingThucThe(); });    </script>
+</body>
+</html>
