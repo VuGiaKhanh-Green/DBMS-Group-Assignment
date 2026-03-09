@@ -1,6 +1,6 @@
-# DBMS-Group-Assignment
+# Hướng dẫn sử dụng
 
-+ Bước 1 : Làm theo file báo cáo để thực hiện setup cơ sở dữ liệu,tạo cơ sở dữ liệu không gian
++ Bước 1 : Làm theo file báo cáo (Group01's Report.pdf) để thực hiện setup cơ sở dữ liệu,tạo cơ sở dữ liệu không gian
 + Bước 2 : Tải 2 file app.python và index.html về và để chúng trong cùng 1 thư mục(recommend để trong ổ D )
 + Bước 3 : Mở cmd lên để dựng backend API dùng python
 ```cmd
@@ -39,5 +39,5 @@ Running on http://127.0.0.1:5000
 ```
 -> đã chạy thành công
 
-Sau đó click đúp vào index.html lên để nó chạy
+Sau đó click đúp vào index.html lên để chạy file trên trình duyệt
 
