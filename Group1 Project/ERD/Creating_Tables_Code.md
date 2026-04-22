@@ -1,4 +1,5 @@
 
+```sql
 
 CREATE TABLE KhachHang (
     CCCD [Kiểu Dữ Liệu] PRIMARY KEY,
@@ -87,3 +88,5 @@ CREATE TABLE PhieuThu (
     NgayThu [Kiểu Dữ Liệu],
     FOREIGN KEY (MaBill) REFERENCES HoaDon(MaBill)
 );
+```
+
