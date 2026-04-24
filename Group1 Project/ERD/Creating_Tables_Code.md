@@ -83,11 +83,13 @@ CREATE TABLE HoaDon
 (
     MaBill VARCHAR(20) PRIMARY KEY,
     MaHD VARCHAR(15) NOT NULL,
-    TongTien DECIMAL(15, 2) DEFAULT 0,
+    TongTien DECIMAL(15, 2) DEFAULT 0 CHECK (TongTien >= 0),
     NgayLap DATE DEFAULT (CURRENT_DATE),
-    TrangThai NVARCHAR(50) DEFAULT N'Chưa thanh toán',
+    TrangThai NVARCHAR(50) DEFAULT N'Còn thiếu' 
+        CHECK (TrangThai IN (N'Đã thanh toán đủ', N'Còn thiếu')),
     KyHoaDon VARCHAR(10), -- Ví dụ: '04/2026'
-    FOREIGN KEY (MaHD) REFERENCES HopDong(MaHD) ON DELETE RESTRICT
+    FOREIGN KEY (MaHD) REFERENCES HopDong(MaHD) 
+        ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 -- 9. BẢNG CHI TIẾT HÓA ĐƠN (Thành phần của Hóa đơn)
