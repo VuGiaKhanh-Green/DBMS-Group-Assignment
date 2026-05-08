@@ -83,37 +83,7 @@ BEGIN
 
     COMMIT;
 END //
- -- đăng ký dịch vụ
 
-CREATE PROCEDURE sp_DangKyDichVu(
-    IN p_MaHD VARCHAR(15),
-    IN p_MaDV VARCHAR(10),
-    IN p_ThangBD DATE,
-    IN p_ThangKT DATE,
-    IN p_SoLuong INT,
-    IN p_DonGia DECIMAL(15,2)
-)
-BEGIN
-    DECLARE v_LoaiDV VARCHAR(50);
-
-    -- Kiểm tra hợp đồng tồn tại và còn hiệu lực
-    IF NOT EXISTS (SELECT 1 FROM HopDong WHERE MaHD = p_MaHD AND TrangThai = 'Còn hiệu lực') THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại hoặc không còn hiệu lực';
-    END IF;
-
-    -- Lấy loại dịch vụ
-    SELECT LoaiDV INTO v_LoaiDV FROM DichVu WHERE MaDV = p_MaDV;
-    IF v_LoaiDV IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã dịch vụ không tồn tại';
-    END IF;
-    IF v_LoaiDV != 'Lựa chọn' THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Chỉ được đăng ký dịch vụ tự chọn';
-    END IF;
-
-    -- Thêm mới đăng ký
-    INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
-    VALUES (p_MaHD, p_MaDV, p_ThangBD, p_ThangKT, p_SoLuong, p_DonGia, 'Còn hiệu lực');
-END //
 -- 3. Hủy dịch vụ
 
 CREATE OR REPLACE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
@@ -175,7 +145,6 @@ BEGIN
 
     COMMIT;
 END //
-
 DELIMITER ;
 
 ```
