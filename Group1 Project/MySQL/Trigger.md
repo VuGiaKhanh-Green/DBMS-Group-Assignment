@@ -23,5 +23,29 @@ BEGIN
     END IF;
 END //
 
+-- Trigger BEFORE UPDATE: nếu trạng thái "Còn hiệu lực" và đã hết hạn -> tự động đổi thành "Hết hiệu lực"
+CREATE TRIGGER trg_HopDong_Update_HetHan
+BEFORE UPDATE ON HopDong
+FOR EACH ROW
+BEGIN
+    IF NEW.TrangThai = 'Còn hiệu lực' 
+       AND DATE_ADD(NEW.NgayKy, INTERVAL NEW.ThoiHan MONTH) < CURDATE() 
+    THEN
+        SET NEW.TrangThai = 'Hết hiệu lực';
+    END IF;
+END //
+
+-- Trigger BEFORE INSERT: phòng trường hợp insert hợp đồng đã hết hạn với trạng thái "Còn hiệu lực"
+CREATE TRIGGER trg_HopDong_Insert_HetHan
+BEFORE INSERT ON HopDong
+FOR EACH ROW
+BEGIN
+    IF NEW.TrangThai = 'Còn hiệu lực' 
+       AND DATE_ADD(NEW.NgayKy, INTERVAL NEW.ThoiHan MONTH) < CURDATE() 
+    THEN
+        SET NEW.TrangThai = 'Hết hiệu lực';
+    END IF;
+END //
+
 DELIMITER ;
 ```
