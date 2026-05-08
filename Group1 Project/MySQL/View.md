@@ -4,7 +4,7 @@ CREATE OR REPLACE VIEW vw_NguoiThue AS
 SELECT k.CCCD, k.HoTen, k.QueQuan, h.MaPhong, h.NgayKy, h.TrangThai
 FROM KhachHang k
 JOIN HopDong h ON k.CCCD = h.CCCD
-WHERE h.TrangThai = 'Còn hiệu lực';
+ORDER BY h.NgayKy DESC;
 
 -- 2. VIEW PHÒNG (Tình trạng các phòng)
 CREATE OR REPLACE VIEW vw_TinhTrangPhong AS
