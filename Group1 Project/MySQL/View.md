@@ -20,10 +20,15 @@ SELECT
     h.NgayKy,
     h.ThoiHan,
     h.TienCoc,
-    h.TrangThai,
     CASE 
-        WHEN h.TrangThai = 'Còn hiệu lực' THEN 
-            h.ThoiHan - TIMESTAMPDIFF(MONTH, h.NgayKy, CURDATE())
+        WHEN h.TrangThai != 'Còn hiệu lực' THEN h.TrangThai
+        WHEN DATE_ADD(h.NgayKy, INTERVAL h.ThoiHan MONTH) < CURDATE() THEN 'Hết hiệu lực'
+        ELSE 'Còn hiệu lực'
+    END AS TrangThai,
+    CASE 
+        WHEN h.TrangThai = 'Còn hiệu lực' AND DATE_ADD(h.NgayKy, INTERVAL h.ThoiHan MONTH) >= CURDATE()
+        THEN h.ThoiHan - TIMESTAMPDIFF(MONTH, h.NgayKy, CURDATE())
+        WHEN h.TrangThai = 'Còn hiệu lực' THEN 0
         ELSE NULL
     END AS SoThangConLai
 FROM HopDong h
