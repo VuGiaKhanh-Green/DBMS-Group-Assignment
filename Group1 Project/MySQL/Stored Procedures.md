@@ -1,7 +1,9 @@
 ```sql
 DELIMITER //
 
--- 1. THÊM HỢP ĐỒNG MỚI 
+-- =============================================
+-- 1. THÊM HỢP ĐỒNG MỚI
+-- =============================================
 CREATE PROCEDURE sp_ThemHopDong(
     IN p_MaHD VARCHAR(15), 
     IN p_CCCD CHAR(12), 
@@ -16,39 +18,41 @@ BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
-        RESIGNAL;   -- Trả lại lỗi cho client
+        RESIGNAL;
     END;
 
     START TRANSACTION;
 
-    -- 1. Kiểm tra và thêm/cập nhật khách hàng
+    -- Kiểm tra và thêm/cập nhật khách hàng
     IF NOT EXISTS (SELECT 1 FROM KhachHang WHERE CCCD = p_CCCD) THEN
         INSERT INTO KhachHang (CCCD, HoTen, QueQuan) VALUES (p_CCCD, p_HoTen, p_QueQuan);
     ELSE
         UPDATE KhachHang SET HoTen = p_HoTen, QueQuan = p_QueQuan WHERE CCCD = p_CCCD;
     END IF;
 
-    -- 2. Kiểm tra khách có hợp đồng đang hiệu lực không
+    -- Kiểm tra khách có hợp đồng đang hiệu lực không
     IF EXISTS (SELECT 1 FROM HopDong WHERE CCCD = p_CCCD AND TrangThai = 'Còn hiệu lực') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Khách đã có hợp đồng đang hiệu lực, không thể thêm mới';
     END IF;
 
-    -- 3. Thêm hợp đồng
+    -- Thêm hợp đồng
     INSERT INTO HopDong(MaHD, CCCD, MaPhong, ThoiHan, TienCoc, TrangThai)
     VALUES (p_MaHD, p_CCCD, p_MaPhong, p_ThoiHan, p_TienCoc, 'Còn hiệu lực');
 
-    -- 4. Cập nhật trạng thái phòng
+    -- Cập nhật trạng thái phòng
     UPDATE PhongTro SET TrangThai = 'Đang được thuê' WHERE MaPhong = p_MaPhong;
 
-    -- 5. Ghi nhận giá thuê đầu tiên
+    -- Ghi nhận giá thuê đầu tiên
     INSERT INTO GiaPhong (MaHD, GiaTien, NgayAp)
     VALUES (p_MaHD, p_GiaThue, CURDATE());
 
     COMMIT;
 END //
 
--- 2. HỦY HỢP ĐỒNG (Giải phóng phòng trống ngay lập tức)[cite: 3]
-CREATE OR REPLACE PROCEDURE sp_HuyHopDong(IN p_MaHD VARCHAR(15))
+-- =============================================
+-- 2. HỦY HỢP ĐỒNG
+-- =============================================
+CREATE PROCEDURE sp_HuyHopDong(IN p_MaHD VARCHAR(15))
 BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
@@ -84,32 +88,10 @@ BEGIN
     COMMIT;
 END //
 
--- 3. Hủy dịch vụ
-
-CREATE OR REPLACE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
-BEGIN
-    DECLARE EXIT HANDLER FOR SQLEXCEPTION
-    BEGIN
-        ROLLBACK;
-        RESIGNAL;
-    END;
-
-    START TRANSACTION;
-
-    SELECT MaHD, TrangThai INTO @v_MaHD, @v_TrangThai FROM DangKyDichVu WHERE MaDK = p_MaDK;
-    IF @v_MaHD IS NULL THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã đăng ký không tồn tại';
-    END IF;
-    IF @v_TrangThai != 'Còn hiệu lực' THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Dịch vụ này đã bị hủy trước đó';
-    END IF;
-
-    UPDATE DangKyDichVu SET TrangThai = 'Đã hủy' WHERE MaDK = p_MaDK;
-
-    COMMIT;
-END //
---- 4. ĐĂNG KÝ DỊCH VỤ
-CREATE OR REPLACE PROCEDURE sp_DangKyDichVu(
+-- =============================================
+-- 3. ĐĂNG KÝ DỊCH VỤ (CHỈ DỊCH VỤ TỰ CHỌN)
+-- =============================================
+CREATE PROCEDURE sp_DangKyDichVu(
     IN p_MaHD VARCHAR(15),
     IN p_MaDV VARCHAR(10),
     IN p_ThangBD DATE,
@@ -146,59 +128,141 @@ BEGIN
     COMMIT;
 END //
 
--- 5. TẠO HÓA ĐƠN (Tự động cộng dồn tiền phòng và dịch vụ)[cite: 3]
-CREATE PROCEDURE sp_TaoHoaDon(IN p_MaBill VARCHAR(20), IN p_MaHD VARCHAR(15), IN p_KyHoaDon VARCHAR(10))
+-- =============================================
+-- 4. HỦY DỊCH VỤ
+-- =============================================
+CREATE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
 BEGIN
-    DECLARE v_TienPhong DECIMAL(15,2);
-    DECLARE v_TienDichVu DECIMAL(15,2);
-    DECLARE v_TongTien DECIMAL(15,2);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
 
-    -- Lấy giá phòng mới nhất[cite: 3]
-    SELECT GiaTien INTO v_TienPhong FROM GiaPhong 
-    WHERE MaHD = p_MaHD ORDER BY NgayAp DESC LIMIT 1;
-      
-    -- Lấy tổng tiền dịch vụ khách đã đăng ký[cite: 3]
-    SELECT COALESCE(SUM(SoLuong * DonGia), 0) INTO v_TienDichVu 
-    FROM DangKyDichVu WHERE MaHD = p_MaHD;
-      
-    SET v_TongTien = v_TienPhong + v_TienDichVu;
-    -- Tiền dịch vụ bắt buộc (không cần thời hạn)
+    START TRANSACTION;
+
+    SELECT MaHD, TrangThai INTO @v_MaHD, @v_TrangThai FROM DangKyDichVu WHERE MaDK = p_MaDK;
+    IF @v_MaHD IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã đăng ký không tồn tại';
+    END IF;
+    IF @v_TrangThai != 'Còn hiệu lực' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Dịch vụ này đã bị hủy trước đó';
+    END IF;
+
+    UPDATE DangKyDichVu SET TrangThai = 'Đã hủy' WHERE MaDK = p_MaDK;
+
+    COMMIT;
+END //
+
+-- =============================================
+-- 5. TẠO HÓA ĐƠN (đã sửa lỗi, có transaction)
+-- =============================================
+CREATE PROCEDURE sp_TaoHoaDon(
+    IN p_MaBill VARCHAR(20), 
+    IN p_MaHD VARCHAR(15), 
+    IN p_KyHoaDon VARCHAR(10)
+)
+BEGIN
+    DECLARE v_TienPhong DECIMAL(15,2) DEFAULT 0;
+    DECLARE v_TienDVBatBuoc DECIMAL(15,2) DEFAULT 0;
+    DECLARE v_TienDVTuChon DECIMAL(15,2) DEFAULT 0;
+    DECLARE v_TongTien DECIMAL(15,2) DEFAULT 0;
+
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    -- Kiểm tra hợp đồng còn hiệu lực
+    IF NOT EXISTS (SELECT 1 FROM HopDong WHERE MaHD = p_MaHD AND TrangThai = 'Còn hiệu lực') THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại hoặc không còn hiệu lực';
+    END IF;
+
+    -- Tiền phòng (giá mới nhất)
+    SELECT GiaTien INTO v_TienPhong 
+    FROM GiaPhong 
+    WHERE MaHD = p_MaHD 
+    ORDER BY NgayAp DESC 
+    LIMIT 1;
+
+    -- Tiền dịch vụ bắt buộc
     SELECT COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO v_TienDVBatBuoc
     FROM DangKyDichVu dk
     JOIN DichVu dv ON dk.MaDV = dv.MaDV
-    WHERE dk.MaHD = p_MaHD AND dv.LoaiDV = 'Bắt buộc';
+    WHERE dk.MaHD = p_MaHD 
+      AND dv.LoaiDV = 'Bắt buộc'
+      AND dk.TrangThai = 'Còn hiệu lực';
 
-    -- Tiền dịch vụ tự chọn (có kiểm tra thời hạn hiệu lực)
+    -- Tiền dịch vụ tự chọn (còn hiệu lực và trong thời gian)
     SELECT COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO v_TienDVTuChon
     FROM DangKyDichVu dk
     JOIN DichVu dv ON dk.MaDV = dv.MaDV
     WHERE dk.MaHD = p_MaHD 
       AND dv.LoaiDV = 'Lựa chọn'
-      AND dk.ThangBD <= CURRENT_DATE 
-      AND dk.ThangKT >= CURRENT_DATE;
+      AND dk.TrangThai = 'Còn hiệu lực'
+      AND dk.ThangBD <= CURDATE() 
+      AND dk.ThangKT >= CURDATE();
 
     SET v_TongTien = v_TienPhong + v_TienDVBatBuoc + v_TienDVTuChon;
 
     -- Thêm hóa đơn
     INSERT INTO HoaDon(MaBill, MaHD, TongTien, KyHoaDon, TrangThai)
     VALUES (p_MaBill, p_MaHD, v_TongTien, p_KyHoaDon, 'Còn thiếu');
-      
-    INSERT INTO ChiTietHoaDon(MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
 
-    -- Thêm chi tiết hóa đơn
+    -- Thêm chi tiết hóa đơn: tiền phòng
     INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
     VALUES (p_MaBill, 'TienPhong', 'Tiền thuê phòng', v_TienPhong, 1);
 
+    -- Nếu có tiền dịch vụ bắt buộc
     IF v_TienDVBatBuoc > 0 THEN
         INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
         VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ bắt buộc', v_TienDVBatBuoc, 1);
     END IF;
 
+    -- Nếu có tiền dịch vụ tự chọn
     IF v_TienDVTuChon > 0 THEN
         INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
         VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ tự chọn', v_TienDVTuChon, 1);
     END IF;
-END //
-DELIMITER ;
 
+    COMMIT;
+END //
+
+-- =============================================
+-- 6. THANH TOÁN HÓA ĐƠN VÀ XÓA NỢ (giữ nguyên)
+-- =============================================
+CREATE PROCEDURE sp_ThanhToanVaXoaNo(
+    IN p_MaBill VARCHAR(20), 
+    IN p_SoTienNop DECIMAL(15,2)
+)
+BEGIN
+    DECLARE v_ConThieu DECIMAL(15,2);
+      
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
+
+    START TRANSACTION;
+
+    -- 1. Lưu phiếu thu
+    INSERT INTO PhieuThu(MaBill, DaThu) VALUES (p_MaBill, p_SoTienNop);
+      
+    -- 2. Lấy số tiền còn thiếu mới nhất
+    SELECT ConThieu INTO v_ConThieu FROM PhieuThu 
+    WHERE MaBill = p_MaBill ORDER BY SoPhieu DESC LIMIT 1;
+      
+    -- 3. Nếu hết nợ, cập nhật trạng thái hóa đơn
+    IF v_ConThieu <= 0 THEN
+        UPDATE HoaDon SET TrangThai = 'Đã thanh toán đủ' WHERE MaBill = p_MaBill;
+    END IF;
+
+    COMMIT;
+END //
+
+DELIMITER ;
 ```
