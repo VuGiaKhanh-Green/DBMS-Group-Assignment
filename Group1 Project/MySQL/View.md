@@ -31,15 +31,20 @@ JOIN KhachHang k ON h.CCCD = k.CCCD;
 
 -- 4. VIEW NGƯỜI CÒN NỢ TIỀN
 CREATE OR REPLACE VIEW vw_NguoiNoTien AS
-SELECT hd.MaBill, k.HoTen, p.MaPhong, hd.TongTien, 
-       COALESCE(SUM(pt.DaThu), 0) AS DaThanhToan,
-       (hd.TongTien - COALESCE(SUM(pt.DaThu), 0)) AS ConNo
+SELECT 
+    hd.MaBill, 
+    k.HoTen, 
+    p.MaPhong,
+    h.MaHD,                     
+    hd.TongTien, 
+    COALESCE(SUM(pt.DaThu), 0) AS DaThanhToan,
+    (hd.TongTien - COALESCE(SUM(pt.DaThu), 0)) AS ConNo
 FROM HoaDon hd
 JOIN HopDong h ON hd.MaHD = h.MaHD
 JOIN KhachHang k ON h.CCCD = k.CCCD
 JOIN PhongTro p ON h.MaPhong = p.MaPhong
 LEFT JOIN PhieuThu pt ON hd.MaBill = pt.MaBill
-GROUP BY hd.MaBill, k.HoTen, p.MaPhong, hd.TongTien
+GROUP BY hd.MaBill, k.HoTen, p.MaPhong, h.MaHD, hd.TongTien
 HAVING ConNo > 0;
 
 -- 5. VIEW DOANH THU THEO KỲ HÓA ĐƠN[cite: 3]
