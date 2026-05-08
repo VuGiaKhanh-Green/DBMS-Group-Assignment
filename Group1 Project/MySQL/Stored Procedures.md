@@ -114,7 +114,7 @@ BEGIN
     INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
     VALUES (p_MaHD, p_MaDV, p_ThangBD, p_ThangKT, p_SoLuong, p_DonGia, 'Còn hiệu lực');
 END //
--- Hủy dịch vụ
+-- 3. Hủy dịch vụ
 
 CREATE OR REPLACE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
 BEGIN
@@ -138,7 +138,7 @@ BEGIN
 
     COMMIT;
 END //
---- Đăng ký dịch vụ
+--- 4. ĐĂNG KÝ DỊCH VỤ
 CREATE OR REPLACE PROCEDURE sp_DangKyDichVu(
     IN p_MaHD VARCHAR(15),
     IN p_MaDV VARCHAR(10),
