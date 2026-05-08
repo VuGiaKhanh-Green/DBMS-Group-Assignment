@@ -48,62 +48,40 @@ BEGIN
 END //
 
 -- 2. HỦY HỢP ĐỒNG (Giải phóng phòng trống ngay lập tức)[cite: 3]
-CREATE PROCEDURE sp_HuyHopDong(IN p_MaHD VARCHAR(15))
+CREATE OR REPLACE PROCEDURE sp_HuyHopDong(IN p_MaHD VARCHAR(15))
 BEGIN
-    DECLARE v_MaPhong VARCHAR(10);
-    SELECT MaPhong INTO v_MaPhong FROM HopDong WHERE MaHD = p_MaHD;
-    
-    UPDATE HopDong SET TrangThai = 'Bị hủy bỏ' WHERE MaHD = p_MaHD;
-    UPDATE PhongTro SET TrangThai = 'Còn trống' WHERE MaPhong = v_MaPhong;
-END //
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
 
--- 3. TẠO HÓA ĐƠN (Tự động cộng dồn tiền phòng và dịch vụ)[cite: 3]
-CREATE PROCEDURE sp_TaoHoaDon(
-    IN p_MaBill VARCHAR(20), 
-    IN p_MaHD VARCHAR(15), 
-    IN p_KyHoaDon VARCHAR(10)
-)
-BEGIN
-    DECLARE v_TienPhong DECIMAL(15,2) DEFAULT 0;
-    DECLARE v_TienDichVu DECIMAL(15,2) DEFAULT 0;
-    DECLARE v_TongTien DECIMAL(15,2) DEFAULT 0;
+    START TRANSACTION;
 
-    -- Tiền phòng mới nhất
-    SELECT GiaTien INTO v_TienPhong 
-    FROM GiaPhong 
-    WHERE MaHD = p_MaHD 
-    ORDER BY NgayAp DESC LIMIT 1;
+    -- Lấy thông tin
+    SELECT MaPhong INTO @v_MaPhong FROM HopDong WHERE MaHD = p_MaHD;
+    SELECT TrangThai INTO @v_TrangThai FROM HopDong WHERE MaHD = p_MaHD;
 
-    -- Dịch vụ bắt buộc (không phụ thuộc thời hạn, nhưng thêm TrangThai cho chắc)
-    SELECT COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO v_TienDichVu
-    FROM DangKyDichVu dk
-    JOIN DichVu dv ON dk.MaDV = dv.MaDV
-    WHERE dk.MaHD = p_MaHD 
-      AND dv.LoaiDV = 'Bắt buộc'
-      AND dk.TrangThai = 'Còn hiệu lực';
-
-    -- Dịch vụ tự chọn còn hiệu lực và trong thời gian
-    SELECT v_TienDichVu + COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO v_TienDichVu
-    FROM DangKyDichVu dk
-    JOIN DichVu dv ON dk.MaDV = dv.MaDV
-    WHERE dk.MaHD = p_MaHD 
-      AND dv.LoaiDV = 'Lựa chọn'
-      AND dk.ThangBD <= CURDATE() 
-      AND dk.ThangKT >= CURDATE()
-      AND dk.TrangThai = 'Còn hiệu lực';
-
-    SET v_TongTien = v_TienPhong + v_TienDichVu;
-
-    INSERT INTO HoaDon(MaBill, MaHD, TongTien, KyHoaDon, TrangThai)
-    VALUES (p_MaBill, p_MaHD, v_TongTien, p_KyHoaDon, 'Còn thiếu');
-
-    INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-    VALUES (p_MaBill, 'TienPhong', 'Tiền thuê phòng', v_TienPhong, 1);
-
-    IF v_TienDichVu > 0 THEN
-        INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-        VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ (bắt buộc + tự chọn)', v_TienDichVu, 1);
+    IF @v_MaPhong IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại';
     END IF;
+    IF @v_TrangThai != 'Còn hiệu lực' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không còn hiệu lực để hủy';
+    END IF;
+
+    UPDATE HopDong SET TrangThai = 'Bị hủy bỏ' WHERE MaHD = p_MaHD;
+
+    -- Giải phóng phòng nếu không còn hợp đồng hiệu lực khác
+    IF NOT EXISTS (
+        SELECT 1 FROM HopDong 
+        WHERE MaPhong = @v_MaPhong 
+          AND TrangThai = 'Còn hiệu lực'
+          AND MaHD != p_MaHD
+    ) THEN
+        UPDATE PhongTro SET TrangThai = 'Còn trống' WHERE MaPhong = @v_MaPhong;
+    END IF;
+
+    COMMIT;
 END //
  -- đăng ký dịch vụ
 
