@@ -91,7 +91,7 @@ END //
 -- =============================================
 -- 3. ĐĂNG KÝ DỊCH VỤ (CHỈ DỊCH VỤ TỰ CHỌN)
 -- =============================================
-CREATE OR REPLACE PROCEDURE sp_DangKyDichVu(
+CREATE  PROCEDURE sp_DangKyDichVu(
     IN p_MaHD VARCHAR(15),
     IN p_MaDV VARCHAR(10),
     IN p_ThangBD DATE,
@@ -140,8 +140,6 @@ BEGIN
 
     COMMIT;
 END //
-
-
 -- =============================================
 -- 4. HỦY DỊCH VỤ
 -- =============================================
