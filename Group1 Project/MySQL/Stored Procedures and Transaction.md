@@ -91,7 +91,7 @@ END //
 -- =============================================
 -- 3. ĐĂNG KÝ DỊCH VỤ (CHỈ DỊCH VỤ TỰ CHỌN)
 -- =============================================
-CREATE PROCEDURE sp_DangKyDichVu(
+CREATE OR REPLACE PROCEDURE sp_DangKyDichVu(
     IN p_MaHD VARCHAR(15),
     IN p_MaDV VARCHAR(10),
     IN p_ThangBD DATE,
@@ -108,12 +108,12 @@ BEGIN
 
     START TRANSACTION;
 
-    -- Kiểm tra hợp đồng
+    -- Kiểm tra hợp đồng tồn tại và còn hiệu lực
     IF NOT EXISTS (SELECT 1 FROM HopDong WHERE MaHD = p_MaHD AND TrangThai = 'Còn hiệu lực') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại hoặc không còn hiệu lực';
     END IF;
 
-    -- Kiểm tra dịch vụ
+    -- Kiểm tra dịch vụ có phải loại 'Lựa chọn'
     SELECT LoaiDV INTO @v_LoaiDV FROM DichVu WHERE MaDV = p_MaDV;
     IF @v_LoaiDV IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã dịch vụ không tồn tại';
@@ -122,11 +122,25 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Chỉ được đăng ký dịch vụ tự chọn';
     END IF;
 
+    -- Kiểm tra trùng lặp: đã có đăng ký còn hiệu lực cho cùng dịch vụ, cùng hợp đồng mà khoảng thời gian giao nhau?
+    IF EXISTS (
+        SELECT 1 FROM DangKyDichVu
+        WHERE MaHD = p_MaHD
+          AND MaDV = p_MaDV
+          AND TrangThai = 'Còn hiệu lực'
+          AND ThangBD <= p_ThangKT
+          AND ThangKT >= p_ThangBD
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Dịch vụ này đã được đăng ký trong khoảng thời gian trùng lặp';
+    END IF;
+
+    -- Nếu không trùng, thêm mới
     INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
     VALUES (p_MaHD, p_MaDV, p_ThangBD, p_ThangKT, p_SoLuong, p_DonGia, 'Còn hiệu lực');
 
     COMMIT;
 END //
+
 
 -- =============================================
 -- 4. HỦY DỊCH VỤ
