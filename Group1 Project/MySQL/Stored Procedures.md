@@ -116,32 +116,36 @@ BEGIN
 END //
 -- Hủy dịch vụ
 
-CREATE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
+CREATE OR REPLACE PROCEDURE sp_HuyDichVu(IN p_MaDK INT)
 BEGIN
-    DECLARE v_MaHD VARCHAR(15);
-    DECLARE v_TrangThai VARCHAR(50);
+    DECLARE EXIT HANDLER FOR SQLEXCEPTION
+    BEGIN
+        ROLLBACK;
+        RESIGNAL;
+    END;
 
-    -- Kiểm tra tồn tại
-    SELECT MaHD, TrangThai INTO v_MaHD, v_TrangThai
-    FROM DangKyDichVu WHERE MaDK = p_MaDK;
+    START TRANSACTION;
 
-    IF v_MaHD IS NULL THEN
+    SELECT MaHD, TrangThai INTO @v_MaHD, @v_TrangThai FROM DangKyDichVu WHERE MaDK = p_MaDK;
+    IF @v_MaHD IS NULL THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã đăng ký không tồn tại';
     END IF;
-
-    -- Chỉ hủy khi đang "Còn hiệu lực"
-    IF v_TrangThai != 'Còn hiệu lực' THEN
+    IF @v_TrangThai != 'Còn hiệu lực' THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Dịch vụ này đã bị hủy trước đó';
     END IF;
 
-    -- Cập nhật trạng thái
     UPDATE DangKyDichVu SET TrangThai = 'Đã hủy' WHERE MaDK = p_MaDK;
+
+    COMMIT;
 END //
---- Tạo hóa đơn
-CREATE OR REPLACE PROCEDURE sp_TaoHoaDon(
-    IN p_MaBill VARCHAR(20), 
-    IN p_MaHD VARCHAR(15), 
-    IN p_KyHoaDon VARCHAR(10)
+--- Đăng ký dịch vụ
+CREATE OR REPLACE PROCEDURE sp_DangKyDichVu(
+    IN p_MaHD VARCHAR(15),
+    IN p_MaDV VARCHAR(10),
+    IN p_ThangBD DATE,
+    IN p_ThangKT DATE,
+    IN p_SoLuong INT,
+    IN p_DonGia DECIMAL(15,2)
 )
 BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -152,41 +156,26 @@ BEGIN
 
     START TRANSACTION;
 
-    -- Kiểm tra hợp đồng hiệu lực
+    -- Kiểm tra hợp đồng
     IF NOT EXISTS (SELECT 1 FROM HopDong WHERE MaHD = p_MaHD AND TrangThai = 'Còn hiệu lực') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại hoặc không còn hiệu lực';
     END IF;
 
-    -- (Các bước tính tiền giữ nguyên như cũ)
-    SELECT GiaTien INTO @v_TienPhong FROM GiaPhong WHERE MaHD = p_MaHD ORDER BY NgayAp DESC LIMIT 1;
-
-    SELECT COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO @v_TienDichVu
-    FROM DangKyDichVu dk
-    JOIN DichVu dv ON dk.MaDV = dv.MaDV
-    WHERE dk.MaHD = p_MaHD AND dv.LoaiDV = 'Bắt buộc' AND dk.TrangThai = 'Còn hiệu lực';
-
-    SELECT @v_TienDichVu + COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO @v_TienDichVu
-    FROM DangKyDichVu dk
-    JOIN DichVu dv ON dk.MaDV = dv.MaDV
-    WHERE dk.MaHD = p_MaHD AND dv.LoaiDV = 'Lựa chọn' 
-      AND dk.TrangThai = 'Còn hiệu lực'
-      AND dk.ThangBD <= CURDATE() AND dk.ThangKT >= CURDATE();
-
-    SET @v_TongTien = @v_TienPhong + @v_TienDichVu;
-
-    INSERT INTO HoaDon(MaBill, MaHD, TongTien, KyHoaDon, TrangThai) 
-    VALUES (p_MaBill, p_MaHD, @v_TongTien, p_KyHoaDon, 'Còn thiếu');
-
-    INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-    VALUES (p_MaBill, 'TienPhong', 'Tiền thuê phòng', @v_TienPhong, 1);
-
-    IF @v_TienDichVu > 0 THEN
-        INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-        VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ (bắt buộc + tự chọn)', @v_TienDichVu, 1);
+    -- Kiểm tra dịch vụ
+    SELECT LoaiDV INTO @v_LoaiDV FROM DichVu WHERE MaDV = p_MaDV;
+    IF @v_LoaiDV IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Mã dịch vụ không tồn tại';
     END IF;
+    IF @v_LoaiDV != 'Lựa chọn' THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Chỉ được đăng ký dịch vụ tự chọn';
+    END IF;
+
+    INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
+    VALUES (p_MaHD, p_MaDV, p_ThangBD, p_ThangKT, p_SoLuong, p_DonGia, 'Còn hiệu lực');
 
     COMMIT;
 END //
+
 DELIMITER ;
 
 ```
