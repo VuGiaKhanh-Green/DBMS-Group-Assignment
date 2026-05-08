@@ -46,6 +46,23 @@ BEGIN
         SET NEW.TrangThai = 'Hết hiệu lực';
     END IF;
 END //
-
+--- Set phòng còn trống khi hết hợp đồng---
+CREATE TRIGGER trg_HopDong_Update_GiaiPhongPhong
+AFTER UPDATE ON HopDong
+FOR EACH ROW
+BEGIN
+    -- Chỉ xử lý nếu trạng thái thay đổi từ 'Còn hiệu lực' sang khác (Hết hiệu lực hoặc Bị hủy bỏ)
+    IF OLD.TrangThai = 'Còn hiệu lực' AND NEW.TrangThai != 'Còn hiệu lực' THEN
+        -- Kiểm tra xem phòng này còn hợp đồng nào 'Còn hiệu lực' khác không
+        IF NOT EXISTS (
+            SELECT 1 FROM HopDong 
+            WHERE MaPhong = NEW.MaPhong 
+              AND TrangThai = 'Còn hiệu lực'
+              AND MaHD != NEW.MaHD
+        ) THEN
+            UPDATE PhongTro SET TrangThai = 'Còn trống' WHERE MaPhong = NEW.MaPhong;
+        END IF;
+    END IF;
+END //
 DELIMITER ;
 ```
