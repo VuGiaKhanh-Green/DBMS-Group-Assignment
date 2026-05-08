@@ -13,7 +13,19 @@ FROM PhongTro;
 
 -- 3. VIEW DANH SÁCH HỢP ĐỒNG
 CREATE OR REPLACE VIEW vw_DanhSachHopDong AS
-SELECT h.MaHD, k.HoTen, h.MaPhong, h.NgayKy, h.ThoiHan, h.TienCoc, h.TrangThai
+SELECT 
+    h.MaHD,
+    k.HoTen,
+    h.MaPhong,
+    h.NgayKy,
+    h.ThoiHan,
+    h.TienCoc,
+    h.TrangThai,
+    CASE 
+        WHEN h.TrangThai = 'Còn hiệu lực' THEN 
+            h.ThoiHan - TIMESTAMPDIFF(MONTH, h.NgayKy, CURDATE())
+        ELSE NULL
+    END AS SoThangConLai
 FROM HopDong h
 JOIN KhachHang k ON h.CCCD = k.CCCD;
 
