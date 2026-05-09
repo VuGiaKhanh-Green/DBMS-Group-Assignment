@@ -4,7 +4,8 @@ DELIMITER //
 -- =============================================
 -- 1. THÊM HỢP ĐỒNG MỚI
 -- =============================================
-CREATE PROCEDURE sp_ThemHopDong(
+
+CREATE OR REPLACE PROCEDURE sp_ThemHopDong(
     IN p_MaHD VARCHAR(15), 
     IN p_CCCD CHAR(12), 
     IN p_HoTen VARCHAR(100),
@@ -12,7 +13,8 @@ CREATE PROCEDURE sp_ThemHopDong(
     IN p_MaPhong VARCHAR(10), 
     IN p_ThoiHan INT, 
     IN p_TienCoc DECIMAL(15,2),
-    IN p_GiaThue DECIMAL(15,2)
+    IN p_GiaThue DECIMAL(15,2),
+    IN p_DichVuBatBuoc JSON   -- NULL nếu không có dịch vụ bắt buộc
 )
 BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -23,28 +25,50 @@ BEGIN
 
     START TRANSACTION;
 
-    -- Kiểm tra và thêm/cập nhật khách hàng
+    -- 1. Khách hàng
     IF NOT EXISTS (SELECT 1 FROM KhachHang WHERE CCCD = p_CCCD) THEN
         INSERT INTO KhachHang (CCCD, HoTen, QueQuan) VALUES (p_CCCD, p_HoTen, p_QueQuan);
     ELSE
         UPDATE KhachHang SET HoTen = p_HoTen, QueQuan = p_QueQuan WHERE CCCD = p_CCCD;
     END IF;
 
-    -- Kiểm tra khách có hợp đồng đang hiệu lực không
+    -- 2. Kiểm tra khách chưa có hợp đồng hiệu lực
     IF EXISTS (SELECT 1 FROM HopDong WHERE CCCD = p_CCCD AND TrangThai = 'Còn hiệu lực') THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Khách đã có hợp đồng đang hiệu lực, không thể thêm mới';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Khách đã có hợp đồng đang hiệu lực';
     END IF;
 
-    -- Thêm hợp đồng
+    -- 3. Thêm hợp đồng
     INSERT INTO HopDong(MaHD, CCCD, MaPhong, ThoiHan, TienCoc, TrangThai)
     VALUES (p_MaHD, p_CCCD, p_MaPhong, p_ThoiHan, p_TienCoc, 'Còn hiệu lực');
 
-    -- Cập nhật trạng thái phòng
+    -- 4. Cập nhật phòng
     UPDATE PhongTro SET TrangThai = 'Đang được thuê' WHERE MaPhong = p_MaPhong;
 
-    -- Ghi nhận giá thuê đầu tiên
+    -- 5. Giá thuê ban đầu
     INSERT INTO GiaPhong (MaHD, GiaTien, NgayAp)
     VALUES (p_MaHD, p_GiaThue, CURDATE());
+
+    -- 6. Xử lý dịch vụ bắt buộc (nếu có)
+    IF p_DichVuBatBuoc IS NOT NULL THEN
+        -- Dùng vòng lặp JSON
+        BEGIN
+            DECLARE i INT DEFAULT 0;
+            DECLARE n INT DEFAULT JSON_LENGTH(p_DichVuBatBuoc);
+            WHILE i < n DO
+                INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
+                VALUES (
+                    p_MaHD,
+                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].MaDV'))),
+                    CURDATE(),
+                    DATE_ADD(CURDATE(), INTERVAL p_ThoiHan MONTH),
+                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].SoLuong'))),
+                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].DonGia'))),
+                    'Còn hiệu lực'
+                );
+                SET i = i + 1;
+            END WHILE;
+        END;
+    END IF;
 
     COMMIT;
 END //
