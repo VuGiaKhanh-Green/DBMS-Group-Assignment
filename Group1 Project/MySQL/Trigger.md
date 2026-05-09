@@ -64,5 +64,25 @@ BEGIN
         END IF;
     END IF;
 END //
+
+CREATE TRIGGER trg_DangKyDichVu_Update_HetHan
+BEFORE UPDATE ON DangKyDichVu
+FOR EACH ROW
+BEGIN
+    -- Nếu trạng thái là 'Còn hiệu lực' và ngày kết thúc đã qua -> tự chuyển sang 'Hết hiệu lực'
+    IF NEW.TrangThai = 'Còn hiệu lực' AND NEW.ThangKT < CURDATE() THEN
+        SET NEW.TrangThai = 'Hết hiệu lực';
+    END IF;
+END //
+
+-- Tương tự cho INSERT (phòng trường hợp nhập dữ liệu cũ)
+CREATE TRIGGER trg_DangKyDichVu_Insert_HetHan
+BEFORE INSERT ON DangKyDichVu
+FOR EACH ROW
+BEGIN
+    IF NEW.TrangThai = 'Còn hiệu lực' AND NEW.ThangKT < CURDATE() THEN
+        SET NEW.TrangThai = 'Hết hiệu lực';
+    END IF;
+END //
 DELIMITER ;
 ```
