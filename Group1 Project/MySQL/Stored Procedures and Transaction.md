@@ -171,7 +171,7 @@ END //
 -- =============================================
 -- 5. TẠO HÓA ĐƠN (đã sửa lỗi, có transaction)
 -- =============================================
-CREATE PROCEDURE sp_TaoHoaDon(
+CREATE  PROCEDURE sp_TaoHoaDon(
     IN p_MaBill VARCHAR(20), 
     IN p_MaHD VARCHAR(15), 
     IN p_KyHoaDon VARCHAR(10)
@@ -180,6 +180,7 @@ BEGIN
     DECLARE v_TienPhong DECIMAL(15,2) DEFAULT 0;
     DECLARE v_TienDVBatBuoc DECIMAL(15,2) DEFAULT 0;
     DECLARE v_TienDVTuChon DECIMAL(15,2) DEFAULT 0;
+    DECLARE v_TienDichVu DECIMAL(15,2) DEFAULT 0;
     DECLARE v_TongTien DECIMAL(15,2) DEFAULT 0;
 
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -190,7 +191,7 @@ BEGIN
 
     START TRANSACTION;
 
-    -- Kiểm tra hợp đồng còn hiệu lực
+    -- Kiểm tra hợp đồng hiệu lực
     IF NOT EXISTS (SELECT 1 FROM HopDong WHERE MaHD = p_MaHD AND TrangThai = 'Còn hiệu lực') THEN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Hợp đồng không tồn tại hoặc không còn hiệu lực';
     END IF;
@@ -210,7 +211,7 @@ BEGIN
       AND dv.LoaiDV = 'Bắt buộc'
       AND dk.TrangThai = 'Còn hiệu lực';
 
-    -- Tiền dịch vụ tự chọn (còn hiệu lực và trong thời gian)
+    -- Tiền dịch vụ tự chọn (còn hiệu lực và trong thời hạn)
     SELECT COALESCE(SUM(dk.SoLuong * dk.DonGia), 0) INTO v_TienDVTuChon
     FROM DangKyDichVu dk
     JOIN DichVu dv ON dk.MaDV = dv.MaDV
@@ -220,30 +221,26 @@ BEGIN
       AND dk.ThangBD <= CURDATE() 
       AND dk.ThangKT >= CURDATE();
 
-    SET v_TongTien = v_TienPhong + v_TienDVBatBuoc + v_TienDVTuChon;
+    -- Tổng tiền dịch vụ
+    SET v_TienDichVu = v_TienDVBatBuoc + v_TienDVTuChon;
+    SET v_TongTien = v_TienPhong + v_TienDichVu;
 
-    -- Thêm hóa đơn
+    -- Chèn hóa đơn
     INSERT INTO HoaDon(MaBill, MaHD, TongTien, KyHoaDon, TrangThai)
     VALUES (p_MaBill, p_MaHD, v_TongTien, p_KyHoaDon, 'Còn thiếu');
 
-    -- Thêm chi tiết hóa đơn: tiền phòng
+    -- Chèn chi tiết hóa đơn (1 dòng tiền phòng, 1 dòng tiền dịch vụ nếu có)
     INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
     VALUES (p_MaBill, 'TienPhong', 'Tiền thuê phòng', v_TienPhong, 1);
 
-    -- Nếu có tiền dịch vụ bắt buộc
-    IF v_TienDVBatBuoc > 0 THEN
+    IF v_TienDichVu > 0 THEN
         INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-        VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ bắt buộc', v_TienDVBatBuoc, 1);
-    END IF;
-
-    -- Nếu có tiền dịch vụ tự chọn
-    IF v_TienDVTuChon > 0 THEN
-        INSERT INTO ChiTietHoaDon (MaBill, Loai, MoTaChiTiet, DonGia, SoLuong)
-        VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ tự chọn', v_TienDVTuChon, 1);
+        VALUES (p_MaBill, 'TienDichVu', 'Dịch vụ (bắt buộc + tự chọn)', v_TienDichVu, 1);
     END IF;
 
     COMMIT;
 END //
+
 
 -- =============================================
 -- 6. THANH TOÁN HÓA ĐƠN VÀ XÓA NỢ (giữ nguyên)
