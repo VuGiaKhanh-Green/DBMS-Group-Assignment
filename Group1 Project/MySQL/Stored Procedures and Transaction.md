@@ -5,7 +5,8 @@ DELIMITER //
 -- 1. THÊM HỢP ĐỒNG MỚI
 -- =============================================
 
-CREATE OR REPLACE PROCEDURE sp_ThemHopDong(
+
+CREATE PROCEDURE sp_ThemHopDong(
     IN p_MaHD VARCHAR(15), 
     IN p_CCCD CHAR(12), 
     IN p_HoTen VARCHAR(100),
@@ -13,8 +14,7 @@ CREATE OR REPLACE PROCEDURE sp_ThemHopDong(
     IN p_MaPhong VARCHAR(10), 
     IN p_ThoiHan INT, 
     IN p_TienCoc DECIMAL(15,2),
-    IN p_GiaThue DECIMAL(15,2),
-    IN p_DichVuBatBuoc JSON   -- NULL nếu không có dịch vụ bắt buộc
+    IN p_GiaThue DECIMAL(15,2)
 )
 BEGIN
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
@@ -41,34 +41,12 @@ BEGIN
     INSERT INTO HopDong(MaHD, CCCD, MaPhong, ThoiHan, TienCoc, TrangThai)
     VALUES (p_MaHD, p_CCCD, p_MaPhong, p_ThoiHan, p_TienCoc, 'Còn hiệu lực');
 
-    -- 4. Cập nhật phòng
+    -- 4. Cập nhật trạng thái phòng
     UPDATE PhongTro SET TrangThai = 'Đang được thuê' WHERE MaPhong = p_MaPhong;
 
-    -- 5. Giá thuê ban đầu
+    -- 5. Ghi nhận giá thuê đầu tiên
     INSERT INTO GiaPhong (MaHD, GiaTien, NgayAp)
     VALUES (p_MaHD, p_GiaThue, CURDATE());
-
-    -- 6. Xử lý dịch vụ bắt buộc (nếu có)
-    IF p_DichVuBatBuoc IS NOT NULL THEN
-        -- Dùng vòng lặp JSON
-        BEGIN
-            DECLARE i INT DEFAULT 0;
-            DECLARE n INT DEFAULT JSON_LENGTH(p_DichVuBatBuoc);
-            WHILE i < n DO
-                INSERT INTO DangKyDichVu (MaHD, MaDV, ThangBD, ThangKT, SoLuong, DonGia, TrangThai)
-                VALUES (
-                    p_MaHD,
-                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].MaDV'))),
-                    CURDATE(),
-                    DATE_ADD(CURDATE(), INTERVAL p_ThoiHan MONTH),
-                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].SoLuong'))),
-                    JSON_UNQUOTE(JSON_EXTRACT(p_DichVuBatBuoc, CONCAT('$[', i, '].DonGia'))),
-                    'Còn hiệu lực'
-                );
-                SET i = i + 1;
-            END WHILE;
-        END;
-    END IF;
 
     COMMIT;
 END //
