@@ -1,6 +1,7 @@
 Cần bổ sung thêm chức năng
 
 Thêm, xóa dịch vụ (bổ sung thêm cột thời gian)
+
 Xóa phòng (bổ sung thêm cột thời gian )
 
 Xem hóa đơn, lịch sử thanh toán hóa đơn
