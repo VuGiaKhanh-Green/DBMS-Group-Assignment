@@ -4,10 +4,12 @@ Thêm, xóa dịch vụ
 
 Xóa phòng
 
-Xem hóa đơn, lịch sử thanh toán hóa đơn
+Xem hóa đơn, lịch sử thanh toán và tạo hóa đơn
 
 Xuất file pdf hợp đồng, hóa đơn,phiếu thanh toán
 
 Chỉnh sửa lại MaHD là tự động tăng,MaDK cũng tự động tăng,MaHoaDon và phiếu thanh toán định danh riêng,tự động tăng
+
+Tìm kiếm khách,hóa đơn,hợp đồng
 
 Thiết kế lại ERD ( 1 phòng sẽ có 1 hóa đơn 1 tháng, không phải người nữa)
